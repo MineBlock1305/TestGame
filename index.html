@@ -70,7 +70,7 @@
 </head>
 <body>
     <div id="controls">
-        <button onclick="startGame()">Создать игру</button>
+        <button id="startButton">Создать игру</button>
         <input id="peerId" placeholder="Вставьте ID для подключения" />
         <button onclick="joinGame()">Присоединиться</button>
         <p id="gameLink"></p>
@@ -86,6 +86,7 @@
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
         const statusEl = document.getElementById('status');
+        const startButton = document.getElementById('startButton');
         const SPAWN_POINTS = { 1: { x: 100, y: 300 }, 2: { x: 700, y: 300 } };
         let peer, conn, playerId, gameState = { players: {}, bullets: [] };
 
@@ -113,6 +114,13 @@
             joystickEl.addEventListener('touchmove', moveJoystick);
             joystickEl.addEventListener('touchend', endJoystick);
         }
+
+        // Проверка загрузки скрипта
+        console.log('Скрипт загружен');
+        startButton.addEventListener('click', () => {
+            console.log('Кнопка "Создать игру" нажата');
+            startGame();
+        });
 
         function updateStatus(msg) {
             statusEl.textContent = msg;
@@ -145,6 +153,7 @@
 
         function startGame() {
             updateStatus('Создание игры...');
+            console.log('Запуск создания игры');
             peer = new Peer();
             peer.on('open', (id) => {
                 playerId = 1;
@@ -239,7 +248,7 @@
             for (let i = gameState.bullets.length - 1; i >= 0; i--) {
                 const b = gameState.bullets[i];
                 for (const [id, p] of Object.entries(gameState.players)) {
-                    if (id !== b.owner && Math.hypot(b.x - p.x, b.y - p.y) < 20) {
+                    if (id !== b.owner && Math.hypot(b.x - p.x,Onze b.y - p.y) < 20) {
                         p.health = Math.max(0, p.health - 10);
                         if (p.health === 0) {
                             someoneDied = true;
