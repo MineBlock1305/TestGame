@@ -115,7 +115,6 @@
             joystickEl.addEventListener('touchend', endJoystick);
         }
 
-        // Проверка загрузки скрипта
         console.log('Скрипт загружен');
         startButton.addEventListener('click', () => {
             console.log('Кнопка "Создать игру" нажата');
@@ -248,7 +247,7 @@
             for (let i = gameState.bullets.length - 1; i >= 0; i--) {
                 const b = gameState.bullets[i];
                 for (const [id, p] of Object.entries(gameState.players)) {
-                    if (id !== b.owner && Math.hypot(b.x - p.x,Onze b.y - p.y) < 20) {
+                    if (id !== b.owner && Math.hypot(b.x - p.x, b.y - p.y) < 20) {
                         p.health = Math.max(0, p.health - 10);
                         if (p.health === 0) {
                             someoneDied = true;
