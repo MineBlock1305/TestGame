@@ -43,7 +43,7 @@
             margin: 0 20px 20px 0;
             display: none;
             touch-action: none;
-            order: -1; /* Джойстик слева */
+            order: -1;
         }
         #stick {
             width: 60px;
@@ -53,6 +53,10 @@
             position: absolute;
             top: 45px;
             left: 45px;
+        }
+        #status {
+            color: red;
+            margin: 5px 0;
         }
         @media (max-width: 850px) {
             #gameContainer {
@@ -70,6 +74,7 @@
         <input id="peerId" placeholder="Вставьте ID для подключения" />
         <button onclick="joinGame()">Присоединиться</button>
         <p id="gameLink"></p>
+        <p id="status"></p>
     </div>
     <div id="gameContainer">
         <div id="joystick"><div id="stick"></div></div>
@@ -80,10 +85,10 @@
     <script>
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
+        const statusEl = document.getElementById('status');
         const SPAWN_POINTS = { 1: { x: 100, y: 300 }, 2: { x: 700, y: 300 } };
         let peer, conn, playerId, gameState = { players: {}, bullets: [] };
 
-        // Адаптация размеров canvas
         canvas.width = Math.min(800, window.innerWidth * 0.9);
         canvas.height = Math.min(600, window.innerHeight * 0.7);
 
@@ -107,6 +112,11 @@
             joystickEl.addEventListener('touchstart', startJoystick);
             joystickEl.addEventListener('touchmove', moveJoystick);
             joystickEl.addEventListener('touchend', endJoystick);
+        }
+
+        function updateStatus(msg) {
+            statusEl.textContent = msg;
+            console.log(msg);
         }
 
         function startJoystick(e) {
@@ -134,12 +144,14 @@
         }
 
         function startGame() {
+            updateStatus('Создание игры...');
             peer = new Peer();
             peer.on('open', (id) => {
                 playerId = 1;
                 document.getElementById('gameLink').innerText = 
                     `Поделитесь ссылкой: ${window.location.href.split('?')[0]}?peer=${id}`;
                 gameState.players[1] = initPlayer(1);
+                updateStatus('Игра создана! Ждём второго игрока.');
                 startRendering();
             });
             peer.on('connection', (connection) => {
@@ -148,22 +160,34 @@
                 conn.on('open', () => {
                     conn.send({ type: 'init', playerId: 2, state: gameState });
                     gameState.players[2] = initPlayer(2);
+                    updateStatus('Второй игрок подключился!');
                 });
             });
-            peer.on('error', console.error);
+            peer.on('error', (err) => {
+                updateStatus(`Ошибка создания игры: ${err.message || err}`);
+            });
         }
 
         function joinGame() {
             const peerIdInput = document.getElementById('peerId').value;
-            if (!peerIdInput) return alert('Введите ID');
+            if (!peerIdInput) {
+                updateStatus('Введите ID для подключения!');
+                return;
+            }
+            updateStatus('Подключение к игре...');
             peer = new Peer();
             peer.on('open', () => {
                 playerId = 2;
                 conn = peer.connect(peerIdInput);
                 conn.on('data', handleData);
-                conn.on('open', startRendering);
+                conn.on('open', () => {
+                    updateStatus('Подключено! Игра началась.');
+                    startRendering();
+                });
             });
-            peer.on('error', console.error);
+            peer.on('error', (err) => {
+                updateStatus(`Ошибка подключения: ${err.message || err}`);
+            });
         }
 
         function handleData(data) {
@@ -184,8 +208,7 @@
             const dx = targetX - player.x;
             const dy = targetY - player.y;
             const mag = Math.sqrt(dx * dx + dy * dy) || 1;
-            // Пуля появляется на краю игрока
-            const offset = 25; // Радиус игрока + небольшой отступ
+            const offset = 25;
             gameState.bullets.push({
                 x: player.x + (dx / mag) * offset,
                 y: player.y + (dy / mag) * offset,
@@ -201,8 +224,8 @@
             if (!player) return;
 
             const speed = 5;
-            const moveX = joystick.active ? joystick.x * speed : (keys['d'] || 0) - (keys['a'] || 0) * speed;
-            const moveY = joystick.active ? joystick.y * speed : (keys['s'] || 0) - (keys['w'] || 0) * speed;
+            const moveX = joystick.active ? joystick.x * speed : ((keys['d'] || 0) - (keys['a'] || 0)) * speed;
+            const moveY = joystick.active ? joystick.y * speed : ((keys['s'] || 0) - (keys['w'] || 0)) * speed;
             player.x = Math.max(0, Math.min(canvas.width, player.x + moveX));
             player.y = Math.max(0, Math.min(canvas.height, player.y + moveY));
 
