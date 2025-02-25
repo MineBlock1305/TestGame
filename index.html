@@ -76,7 +76,7 @@
         document.addEventListener('keyup', (e) => keys[e.key] = false);
         canvas.addEventListener('click', shoot);
 
-        // Настройка джойстика
+        // Джойстик
         const joystick = document.getElementById('joystick');
         const stick = document.getElementById('stick');
         if ('ontouchstart' in window) {
@@ -122,7 +122,7 @@
                 const currentUrl = window.location.href.split('?')[0];
                 document.getElementById('gameLink').innerText = 
                     `Поделитесь ссылкой: ${currentUrl}?peer=${id}`;
-                gameState.players[1] = players[1];
+                gameState.players[1] = { ...players[1] };
                 startRendering();
             });
             peer.on('connection', (connection) => {
@@ -130,13 +130,15 @@
                 conn.on('data', handleData);
                 conn.on('open', () => {
                     conn.send({ type: 'init', playerId: 2, state: gameState });
-                    gameState.players[2] = players[2];
+                    gameState.players[2] = { ...players[2] };
                 });
             });
+            peer.on('error', (err) => console.error('PeerJS error:', err));
         }
 
         function joinGame() {
             const peerIdInput = document.getElementById('peerId').value;
+            if (!peerIdInput) return alert('Введите ID для подключения');
             peer = new Peer();
             peer.on('open', (id) => {
                 playerId = 2;
@@ -144,6 +146,7 @@
                 conn.on('data', handleData);
                 conn.on('open', () => startRendering());
             });
+            peer.on('error', (err) => console.error('PeerJS error:', err));
         }
 
         function handleData(data) {
@@ -160,6 +163,7 @@
             const x = event.clientX - rect.left;
             const y = event.clientY - rect.top;
             const player = gameState.players[playerId];
+            if (!player) return;
             const dx = x - player.x;
             const dy = y - player.y;
             const mag = Math.sqrt(dx * dx + dy * dy);
@@ -177,7 +181,7 @@
             const player = gameState.players[playerId];
             if (!player) return;
 
-            // Движение: клавиши или джойстик
+            // Движение
             if (joystickActive) {
                 player.x += joystickX * 5;
                 player.y += joystickY * 5;
@@ -199,18 +203,20 @@
             });
 
             // Проверка попаданий
-            for (let bullet of gameState.bullets) {
+            for (let i = gameState.bullets.length - 1; i >= 0; i--) {
+                const bullet = gameState.bullets[i];
                 for (let pId in gameState.players) {
                     if (pId != bullet.owner) {
                         const p = gameState.players[pId];
-                        if (Math.hypot(bullet.x - p.x, bullet.y - p.y) < 20) {
-                            p.health -= 10; // Урон от пули
-                            if (p.health <= 0) {
-                                p.health = 0;
-                                gameState.players[bullet.owner].score++;
-                                p.score = Math.max(0, p.score - 1); // Счёт не ниже 0
+                        if (p && Math.hypot(bullet.x - p.x, bullet.y - p.y) < 20) {
+                            p.health = Math.max(0, (p.health || 100) - 10); // Урон
+                            if (p.health === 0) {
+                                p.score = Math.max(0, (p.score || 0) - 1);
+                                gameState.players[bullet.owner].score = 
+                                    (gameState.players[bullet.owner].score || 0) + 1;
                             }
-                            gameState.bullets = gameState.bullets.filter(b => b !== bullet);
+                            gameState.bullets.splice(i, 1); // Удаляем пулю
+                            break;
                         }
                     }
                 }
@@ -230,12 +236,13 @@
 
             for (let id in gameState.players) {
                 const p = gameState.players[id];
+                if (!p) continue;
                 ctx.fillStyle = p.color;
                 ctx.beginPath();
                 ctx.arc(p.x, p.y, 20, 0, Math.PI * 2);
                 ctx.fill();
                 ctx.fillStyle = 'black';
-                ctx.fillText(`Score: ${p.score} | HP: ${p.health}`, p.x - 40, p.y - 30);
+                ctx.fillText(`Score: ${p.score || 0} | HP: ${p.health || 100}`, p.x - 40, p.y - 30);
             }
 
             ctx.fillStyle = 'black';
