@@ -39,13 +39,11 @@
             bullets: []
         };
 
-        // Инициализация игрока
         const players = {
             1: { x: 100, y: 300, color: 'blue', score: 0 },
             2: { x: 700, y: 300, color: 'red', score: 0 }
         };
 
-        // Управление
         let keys = {};
         document.addEventListener('keydown', (e) => keys[e.key] = true);
         document.addEventListener('keyup', (e) => keys[e.key] = false);
@@ -55,8 +53,9 @@
             peer = new Peer();
             peer.on('open', (id) => {
                 playerId = 1;
+                const currentUrl = window.location.href.split('?')[0]; // Убираем параметры из URL
                 document.getElementById('gameLink').innerText = 
-                    `Поделитесь ссылкой: ${window.location.href}?peer=${id}`;
+                    `Поделитесь ссылкой: ${currentUrl}?peer=${id}`;
                 gameState.players[1] = players[1];
                 startRendering();
             });
@@ -112,24 +111,20 @@
             const player = gameState.players[playerId];
             if (!player) return;
 
-            // Движение игрока
             if (keys['w']) player.y -= 5;
             if (keys['s']) player.y += 5;
             if (keys['a']) player.x -= 5;
             if (keys['d']) player.x += 5;
 
-            // Границы
             player.x = Math.max(0, Math.min(800, player.x));
             player.y = Math.max(0, Math.min(600, player.y));
 
-            // Обновление пуль
             gameState.bullets = gameState.bullets.filter(b => {
                 b.x += b.dx;
                 b.y += b.dy;
                 return b.x >= 0 && b.x <= 800 && b.y >= 0 && b.y <= 600;
             });
 
-            // Проверка попаданий
             for (let bullet of gameState.bullets) {
                 for (let pId in gameState.players) {
                     if (pId != bullet.owner) {
@@ -155,7 +150,6 @@
         function render() {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-            // Отрисовка игроков
             for (let id in gameState.players) {
                 const p = gameState.players[id];
                 ctx.fillStyle = p.color;
@@ -166,7 +160,6 @@
                 ctx.fillText(`Score: ${p.score}`, p.x - 20, p.y - 30);
             }
 
-            // Отрисовка пуль
             ctx.fillStyle = 'black';
             for (let bullet of gameState.bullets) {
                 ctx.beginPath();
@@ -182,7 +175,6 @@
             }, 1000 / 60);
         }
 
-        // Подключение через URL
         const urlParams = new URLSearchParams(window.location.search);
         if (urlParams.has('peer')) {
             document.getElementById('peerId').value = urlParams.get('peer');
