@@ -13,7 +13,7 @@
             overflow: hidden;
             background: #f0f0f0;
             min-height: 100vh;
-            position: relative; /* Для позиционирования версии */
+            position: relative;
         }
         #gameContainer {
             display: flex;
@@ -22,6 +22,7 @@
             justify-content: center;
             flex-wrap: wrap;
             max-width: 100%;
+            position: relative;
         }
         canvas {
             border: 1px solid black;
@@ -99,18 +100,25 @@
         const ctx = canvas.getContext('2d');
         const statusEl = document.getElementById('status');
         const startButton = document.getElementById('startButton');
-        const SPAWN_POINTS = { 1: { x: 100, y: 300 }, 2: { x: 700, y: 300 } };
+        const SPAWN_POINTS = { 1: { x: 100, y: 100 }, 2: { x: 700, y: 100 } };
+        const GRAVITY = 0.5;
+        const FLOOR_HEIGHT = 50;
+        const PLAYER_SIZE = 40;
+        const BULLET_SIZE = 10;
         let peer, conn, playerId, gameState = { players: {}, bullets: [] };
 
         canvas.width = Math.min(800, window.innerWidth * 0.9);
         canvas.height = Math.min(600, window.innerHeight * 0.7);
+        const FLOOR_Y = canvas.height - FLOOR_HEIGHT;
 
         const initPlayer = (id) => ({
             x: SPAWN_POINTS[id].x,
             y: SPAWN_POINTS[id].y,
             color: id === 1 ? 'blue' : 'red',
             score: 0,
-            health: 100
+            health: 100,
+            velocityY: 0,
+            isGrounded: false
         });
 
         let keys = {}, joystick = { active: false, x: 0, y: 0 };
@@ -225,13 +233,13 @@
             const rect = canvas.getBoundingClientRect();
             const targetX = e.clientX - rect.left;
             const targetY = e.clientY - rect.top;
-            const dx = targetX - player.x;
-            const dy = targetY - player.y;
+            const dx = targetX - (player.x + PLAYER_SIZE / 2);
+            const dy = targetY - (player.y + PLAYER_SIZE / 2);
             const mag = Math.sqrt(dx * dx + dy * dy) || 1;
-            const offset = 25;
+            const offset = PLAYER_SIZE / 2 + 5;
             gameState.bullets.push({
-                x: player.x + (dx / mag) * offset,
-                y: player.y + (dy / mag) * offset,
+                x: player.x + PLAYER_SIZE / 2 + (dx / mag) * offset,
+                y: player.y + PLAYER_SIZE / 2 + (dy / mag) * offset,
                 dx: (dx / mag) * 5,
                 dy: (dy / mag) * 5,
                 owner: playerId
@@ -243,23 +251,47 @@
             const player = gameState.players[playerId];
             if (!player) return;
 
+            // Движение по горизонтали
             const speed = 5;
             const moveX = joystick.active ? joystick.x * speed : ((keys['d'] || 0) - (keys['a'] || 0)) * speed;
-            const moveY = joystick.active ? joystick.y * speed : ((keys['s'] || 0) - (keys['w'] || 0)) * speed;
-            player.x = Math.max(0, Math.min(canvas.width, player.x + moveX));
-            player.y = Math.max(0, Math.min(canvas.height, player.y + moveY));
+            player.x = Math.max(0, Math.min(canvas.width - PLAYER_SIZE, player.x + moveX));
 
+            // Прыжок
+            if ((keys['w'] || joystick.y < -0.5) && player.isGrounded) {
+                player.velocityY = -12; // Сила прыжка
+                player.isGrounded = false;
+            }
+
+            // Гравитация
+            player.velocityY += GRAVITY;
+            player.y += player.velocityY;
+
+            // Коллизия с полом
+            if (player.y + PLAYER_SIZE >= FLOOR_Y) {
+                player.y = FLOOR_Y - PLAYER_SIZE;
+                player.velocityY = 0;
+                player.isGrounded = true;
+            } else {
+                player.isGrounded = false;
+            }
+
+            // Обновление пуль
             gameState.bullets = gameState.bullets.filter(b => {
                 b.x += b.dx;
                 b.y += b.dy;
+                // Коллизия пуль с полом
+                if (b.y + BULLET_SIZE >= FLOOR_Y) return false;
                 return b.x >= 0 && b.x <= canvas.width && b.y >= 0 && b.y <= canvas.height;
             });
 
+            // Проверка попаданий
             let someoneDied = false;
             for (let i = gameState.bullets.length - 1; i >= 0; i--) {
                 const b = gameState.bullets[i];
                 for (const [id, p] of Object.entries(gameState.players)) {
-                    if (id !== b.owner && Math.hypot(b.x - p.x, b.y - p.y) < 20) {
+                    if (id !== b.owner && 
+                        b.x < p.x + PLAYER_SIZE && b.x + BULLET_SIZE > p.x && 
+                        b.y < p.y + PLAYER_SIZE && b.y + BULLET_SIZE > p.y) {
                         p.health = Math.max(0, p.health - 10);
                         if (p.health === 0) {
                             someoneDied = true;
@@ -278,6 +310,8 @@
                     p.x = SPAWN_POINTS[id].x;
                     p.y = SPAWN_POINTS[id].y;
                     p.health = 100;
+                    p.velocityY = 0;
+                    p.isGrounded = false;
                 }
             }
 
@@ -290,19 +324,23 @@
 
         function render() {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Отрисовка пола
+            ctx.fillStyle = '#666';
+            ctx.fillRect(0, FLOOR_Y, canvas.width, FLOOR_HEIGHT);
+
+            // Отрисовка игроков (квадраты)
             for (const [id, p] of Object.entries(gameState.players)) {
                 ctx.fillStyle = p.color;
-                ctx.beginPath();
-                ctx.arc(p.x, p.y, 20, 0, Math.PI * 2);
-                ctx.fill();
+                ctx.fillRect(p.x, p.y, PLAYER_SIZE, PLAYER_SIZE);
                 ctx.fillStyle = 'black';
-                ctx.fillText(`Score: ${p.score} | HP: ${p.health}`, p.x - 40, p.y - 30);
+                ctx.fillText(`Score: ${p.score} | HP: ${p.health}`, p.x - 40, p.y - 10);
             }
+
+            // Отрисовка пуль (квадраты)
             ctx.fillStyle = 'black';
             for (const b of gameState.bullets) {
-                ctx.beginPath();
-                ctx.arc(b.x, b.y, 5, 0, Math.PI * 2);
-                ctx.fill();
+                ctx.fillRect(b.x, b.y, BULLET_SIZE, BULLET_SIZE);
             }
         }
 
