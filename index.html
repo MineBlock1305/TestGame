@@ -6,15 +6,39 @@
         canvas {
             border: 1px solid black;
             background: #f0f0f0;
+            max-width: 100%;
+            height: auto;
         }
         body {
             display: flex;
             flex-direction: column;
             align-items: center;
             font-family: Arial, sans-serif;
+            margin: 0;
+            overflow: hidden;
         }
         #controls {
             margin: 10px;
+        }
+        #joystick {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            width: 100px;
+            height: 100px;
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 50%;
+            display: none;
+            touch-action: none;
+        }
+        #stick {
+            width: 40px;
+            height: 40px;
+            background: rgba(0, 0, 0, 0.5);
+            border-radius: 50%;
+            position: absolute;
+            top: 30px;
+            left: 30px;
         }
     </style>
 </head>
@@ -26,6 +50,7 @@
         <p id="gameLink"></p>
     </div>
     <canvas id="gameCanvas" width="800" height="600"></canvas>
+    <div id="joystick"><div id="stick"></div></div>
 
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <script>
@@ -40,20 +65,61 @@
         };
 
         const players = {
-            1: { x: 100, y: 300, color: 'blue', score: 0 },
-            2: { x: 700, y: 300, color: 'red', score: 0 }
+            1: { x: 100, y: 300, color: 'blue', score: 0, health: 100 },
+            2: { x: 700, y: 300, color: 'red', score: 0, health: 100 }
         };
 
         let keys = {};
+        let joystickActive = false;
+        let joystickX = 0, joystickY = 0;
         document.addEventListener('keydown', (e) => keys[e.key] = true);
         document.addEventListener('keyup', (e) => keys[e.key] = false);
         canvas.addEventListener('click', shoot);
+
+        // Настройка джойстика
+        const joystick = document.getElementById('joystick');
+        const stick = document.getElementById('stick');
+        if ('ontouchstart' in window) {
+            joystick.style.display = 'block';
+            joystick.addEventListener('touchstart', startJoystick);
+            joystick.addEventListener('touchmove', moveJoystick);
+            joystick.addEventListener('touchend', endJoystick);
+        }
+
+        function startJoystick(e) {
+            joystickActive = true;
+            moveJoystick(e);
+        }
+
+        function moveJoystick(e) {
+            if (!joystickActive) return;
+            e.preventDefault();
+            const touch = e.touches[0];
+            const rect = joystick.getBoundingClientRect();
+            const centerX = rect.left + 50;
+            const centerY = rect.top + 50;
+            joystickX = (touch.clientX - centerX) / 50;
+            joystickY = (touch.clientY - centerY) / 50;
+            const mag = Math.min(1, Math.sqrt(joystickX * joystickX + joystickY * joystickY));
+            joystickX /= mag || 1;
+            joystickY /= mag || 1;
+            stick.style.left = `${50 + joystickX * 30 - 20}px`;
+            stick.style.top = `${50 + joystickY * 30 - 20}px`;
+        }
+
+        function endJoystick() {
+            joystickActive = false;
+            joystickX = 0;
+            joystickY = 0;
+            stick.style.left = '30px';
+            stick.style.top = '30px';
+        }
 
         function startGame() {
             peer = new Peer();
             peer.on('open', (id) => {
                 playerId = 1;
-                const currentUrl = window.location.href.split('?')[0]; // Убираем параметры из URL
+                const currentUrl = window.location.href.split('?')[0];
                 document.getElementById('gameLink').innerText = 
                     `Поделитесь ссылкой: ${currentUrl}?peer=${id}`;
                 gameState.players[1] = players[1];
@@ -111,28 +177,40 @@
             const player = gameState.players[playerId];
             if (!player) return;
 
-            if (keys['w']) player.y -= 5;
-            if (keys['s']) player.y += 5;
-            if (keys['a']) player.x -= 5;
-            if (keys['d']) player.x += 5;
+            // Движение: клавиши или джойстик
+            if (joystickActive) {
+                player.x += joystickX * 5;
+                player.y += joystickY * 5;
+            } else {
+                if (keys['w']) player.y -= 5;
+                if (keys['s']) player.y += 5;
+                if (keys['a']) player.x -= 5;
+                if (keys['d']) player.x += 5;
+            }
 
             player.x = Math.max(0, Math.min(800, player.x));
             player.y = Math.max(0, Math.min(600, player.y));
 
+            // Обновление пуль
             gameState.bullets = gameState.bullets.filter(b => {
                 b.x += b.dx;
                 b.y += b.dy;
                 return b.x >= 0 && b.x <= 800 && b.y >= 0 && b.y <= 600;
             });
 
+            // Проверка попаданий
             for (let bullet of gameState.bullets) {
                 for (let pId in gameState.players) {
                     if (pId != bullet.owner) {
                         const p = gameState.players[pId];
                         if (Math.hypot(bullet.x - p.x, bullet.y - p.y) < 20) {
-                            p.score--;
+                            p.health -= 10; // Урон от пули
+                            if (p.health <= 0) {
+                                p.health = 0;
+                                gameState.players[bullet.owner].score++;
+                                p.score = Math.max(0, p.score - 1); // Счёт не ниже 0
+                            }
                             gameState.bullets = gameState.bullets.filter(b => b !== bullet);
-                            gameState.players[bullet.owner].score++;
                         }
                     }
                 }
@@ -157,7 +235,7 @@
                 ctx.arc(p.x, p.y, 20, 0, Math.PI * 2);
                 ctx.fill();
                 ctx.fillStyle = 'black';
-                ctx.fillText(`Score: ${p.score}`, p.x - 20, p.y - 30);
+                ctx.fillText(`Score: ${p.score} | HP: ${p.health}`, p.x - 40, p.y - 30);
             }
 
             ctx.fillStyle = 'black';
