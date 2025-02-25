@@ -6,25 +6,33 @@
         body {
             margin: 0;
             display: flex;
+            flex-direction: column;
             align-items: center;
             justify-content: center;
             font-family: Arial, sans-serif;
             overflow: hidden;
             background: #f0f0f0;
+            min-height: 100vh;
         }
         #gameContainer {
             display: flex;
             flex-direction: row;
             align-items: center;
+            justify-content: center;
+            flex-wrap: wrap;
+            max-width: 100%;
         }
         canvas {
             border: 1px solid black;
             background: #fff;
+            width: 800px;
+            height: 600px;
             max-width: 100%;
+            max-height: 80vh;
         }
         #controls {
             text-align: center;
-            margin-bottom: 10px;
+            margin: 10px 0;
         }
         #joystick {
             width: 150px;
@@ -32,9 +40,10 @@
             background: rgba(0, 0, 0, 0.2);
             border-radius: 50%;
             position: relative;
-            margin-right: 20px;
+            margin: 0 20px 20px 0;
             display: none;
             touch-action: none;
+            order: -1; /* Джойстик слева */
         }
         #stick {
             width: 60px;
@@ -44,6 +53,14 @@
             position: absolute;
             top: 45px;
             left: 45px;
+        }
+        @media (max-width: 850px) {
+            #gameContainer {
+                flex-direction: column;
+            }
+            #joystick {
+                margin: 20px 0;
+            }
         }
     </style>
 </head>
@@ -56,7 +73,7 @@
     </div>
     <div id="gameContainer">
         <div id="joystick"><div id="stick"></div></div>
-        <canvas id="gameCanvas" width="800" height="600"></canvas>
+        <canvas id="gameCanvas"></canvas>
     </div>
 
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
@@ -66,7 +83,10 @@
         const SPAWN_POINTS = { 1: { x: 100, y: 300 }, 2: { x: 700, y: 300 } };
         let peer, conn, playerId, gameState = { players: {}, bullets: [] };
 
-        // Оптимизированные структуры игроков и управления
+        // Адаптация размеров canvas
+        canvas.width = Math.min(800, window.innerWidth * 0.9);
+        canvas.height = Math.min(600, window.innerHeight * 0.7);
+
         const initPlayer = (id) => ({
             x: SPAWN_POINTS[id].x,
             y: SPAWN_POINTS[id].y,
@@ -79,7 +99,6 @@
         const joystickEl = document.getElementById('joystick');
         const stickEl = document.getElementById('stick');
 
-        // Инициализация событий
         document.addEventListener('keydown', (e) => keys[e.key] = true);
         document.addEventListener('keyup', (e) => keys[e.key] = false);
         canvas.addEventListener('click', shoot);
@@ -160,12 +179,16 @@
             const player = gameState.players[playerId];
             if (!player) return;
             const rect = canvas.getBoundingClientRect();
-            const dx = e.clientX - rect.left - player.x;
-            const dy = e.clientY - rect.top - player.y;
+            const targetX = e.clientX - rect.left;
+            const targetY = e.clientY - rect.top;
+            const dx = targetX - player.x;
+            const dy = targetY - player.y;
             const mag = Math.sqrt(dx * dx + dy * dy) || 1;
+            // Пуля появляется на краю игрока
+            const offset = 25; // Радиус игрока + небольшой отступ
             gameState.bullets.push({
-                x: player.x,
-                y: player.y,
+                x: player.x + (dx / mag) * offset,
+                y: player.y + (dy / mag) * offset,
                 dx: (dx / mag) * 5,
                 dy: (dy / mag) * 5,
                 owner: playerId
@@ -177,21 +200,18 @@
             const player = gameState.players[playerId];
             if (!player) return;
 
-            // Движение
             const speed = 5;
-            const moveX = joystick.active ? joystick.x * speed : (keys['d'] - keys['a']) * speed;
-            const moveY = joystick.active ? joystick.y * speed : (keys['s'] - keys['w']) * speed;
-            player.x = Math.max(0, Math.min(800, player.x + moveX));
-            player.y = Math.max(0, Math.min(600, player.y + moveY));
+            const moveX = joystick.active ? joystick.x * speed : (keys['d'] || 0) - (keys['a'] || 0) * speed;
+            const moveY = joystick.active ? joystick.y * speed : (keys['s'] || 0) - (keys['w'] || 0) * speed;
+            player.x = Math.max(0, Math.min(canvas.width, player.x + moveX));
+            player.y = Math.max(0, Math.min(canvas.height, player.y + moveY));
 
-            // Обновление пуль
             gameState.bullets = gameState.bullets.filter(b => {
                 b.x += b.dx;
                 b.y += b.dy;
-                return b.x >= 0 && b.x <= 800 && b.y >= 0 && b.y <= 600;
+                return b.x >= 0 && b.x <= canvas.width && b.y >= 0 && b.y <= canvas.height;
             });
 
-            // Проверка попаданий
             let someoneDied = false;
             for (let i = gameState.bullets.length - 1; i >= 0; i--) {
                 const b = gameState.bullets[i];
@@ -209,7 +229,6 @@
                 }
             }
 
-            // Телепортация при смерти
             if (someoneDied) {
                 for (const id in gameState.players) {
                     const p = gameState.players[id];
@@ -248,7 +267,7 @@
             setInterval(() => {
                 updateGame();
                 render();
-            }, 16); // ~60 FPS
+            }, 16);
         }
 
         const urlParams = new URLSearchParams(window.location.search);
