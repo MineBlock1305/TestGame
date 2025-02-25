@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>2D Shooter Game</title>
+    <style>
+        canvas {
+            border: 1px solid black;
+            background: #f0f0f0;
+        }
+        body {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            font-family: Arial, sans-serif;
+        }
+        #controls {
+            margin: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div id="controls">
+        <button onclick="startGame()">Создать игру</button>
+        <input id="peerId" placeholder="Вставьте ID для подключения" />
+        <button onclick="joinGame()">Присоединиться</button>
+        <p id="gameLink"></p>
+    </div>
+    <canvas id="gameCanvas" width="800" height="600"></canvas>
+
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        let peer = null;
+        let conn = null;
+        let playerId = null;
+        let gameState = {
+            players: {},
+            bullets: []
+        };
+
+        // Инициализация игрока
+        const players = {
+            1: { x: 100, y: 300, color: 'blue', score: 0 },
+            2: { x: 700, y: 300, color: 'red', score: 0 }
+        };
+
+        // Управление
+        let keys = {};
+        document.addEventListener('keydown', (e) => keys[e.key] = true);
+        document.addEventListener('keyup', (e) => keys[e.key] = false);
+        canvas.addEventListener('click', shoot);
+
+        function startGame() {
+            peer = new Peer();
+            peer.on('open', (id) => {
+                playerId = 1;
+                document.getElementById('gameLink').innerText = 
+                    `Поделитесь ссылкой: ${window.location.href}?peer=${id}`;
+                gameState.players[1] = players[1];
+                startRendering();
+            });
+            peer.on('connection', (connection) => {
+                conn = connection;
+                conn.on('data', handleData);
+                conn.on('open', () => {
+                    conn.send({ type: 'init', playerId: 2, state: gameState });
+                    gameState.players[2] = players[2];
+                });
+            });
+        }
+
+        function joinGame() {
+            const peerIdInput = document.getElementById('peerId').value;
+            peer = new Peer();
+            peer.on('open', (id) => {
+                playerId = 2;
+                conn = peer.connect(peerIdInput);
+                conn.on('data', handleData);
+                conn.on('open', () => startRendering());
+            });
+        }
+
+        function handleData(data) {
+            if (data.type === 'init') {
+                gameState = data.state;
+                playerId = data.playerId;
+            } else if (data.type === 'update') {
+                gameState = data.state;
+            }
+        }
+
+        function shoot(event) {
+            const rect = canvas.getBoundingClientRect();
+            const x = event.clientX - rect.left;
+            const y = event.clientY - rect.top;
+            const player = gameState.players[playerId];
+            const dx = x - player.x;
+            const dy = y - player.y;
+            const mag = Math.sqrt(dx * dx + dy * dy);
+            gameState.bullets.push({
+                x: player.x,
+                y: player.y,
+                dx: (dx / mag) * 5,
+                dy: (dy / mag) * 5,
+                owner: playerId
+            });
+            syncGameState();
+        }
+
+        function updateGame() {
+            const player = gameState.players[playerId];
+            if (!player) return;
+
+            // Движение игрока
+            if (keys['w']) player.y -= 5;
+            if (keys['s']) player.y += 5;
+            if (keys['a']) player.x -= 5;
+            if (keys['d']) player.x += 5;
+
+            // Границы
+            player.x = Math.max(0, Math.min(800, player.x));
+            player.y = Math.max(0, Math.min(600, player.y));
+
+            // Обновление пуль
+            gameState.bullets = gameState.bullets.filter(b => {
+                b.x += b.dx;
+                b.y += b.dy;
+                return b.x >= 0 && b.x <= 800 && b.y >= 0 && b.y <= 600;
+            });
+
+            // Проверка попаданий
+            for (let bullet of gameState.bullets) {
+                for (let pId in gameState.players) {
+                    if (pId != bullet.owner) {
+                        const p = gameState.players[pId];
+                        if (Math.hypot(bullet.x - p.x, bullet.y - p.y) < 20) {
+                            p.score--;
+                            gameState.bullets = gameState.bullets.filter(b => b !== bullet);
+                            gameState.players[bullet.owner].score++;
+                        }
+                    }
+                }
+            }
+
+            syncGameState();
+        }
+
+        function syncGameState() {
+            if (conn && conn.open) {
+                conn.send({ type: 'update', state: gameState });
+            }
+        }
+
+        function render() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Отрисовка игроков
+            for (let id in gameState.players) {
+                const p = gameState.players[id];
+                ctx.fillStyle = p.color;
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, 20, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.fillStyle = 'black';
+                ctx.fillText(`Score: ${p.score}`, p.x - 20, p.y - 30);
+            }
+
+            // Отрисовка пуль
+            ctx.fillStyle = 'black';
+            for (let bullet of gameState.bullets) {
+                ctx.beginPath();
+                ctx.arc(bullet.x, bullet.y, 5, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        function startRendering() {
+            setInterval(() => {
+                updateGame();
+                render();
+            }, 1000 / 60);
+        }
+
+        // Подключение через URL
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.has('peer')) {
+            document.getElementById('peerId').value = urlParams.get('peer');
+            joinGame();
+        }
+    </script>
+</body>
+</html>
