@@ -3,81 +3,15 @@
 <head>
     <title>2D Sandbox Game</title>
     <style>
-        body {
-            margin: 0;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            font-family: Arial, sans-serif;
-            overflow: hidden;
-            background: #f0f0f0;
-            min-height: 100vh;
-            position: relative;
-        }
-        #gameContainer {
-            display: flex;
-            flex-direction: row;
-            align-items: center;
-            justify-content: center;
-            flex-wrap: wrap;
-            max-width: 100%;
-            position: relative;
-        }
-        canvas {
-            border: 1px solid black;
-            background: #fff;
-            width: 800px;
-            height: 600px;
-            max-width: 100%;
-            max-height: 80vh;
-        }
-        #controls {
-            text-align: center;
-            margin: 10px 0;
-        }
-        #joystick {
-            width: 150px;
-            height: 150px;
-            background: rgba(0, 0, 0, 0.2);
-            border-radius: 50%;
-            position: relative;
-            margin: 0 20px 20px 0;
-            display: none;
-            touch-action: none;
-            order: -1;
-        }
-        #stick {
-            width: 60px;
-            height: 60px;
-            background: rgba(0, 0, 0, 0.5);
-            border-radius: 50%;
-            position: absolute;
-            top: 45px;
-            left: 45px;
-        }
-        #status {
-            color: red;
-            margin: 5px 0;
-        }
-        #version {
-            position: absolute;
-            top: 10px;
-            right: 10px;
-            font-size: 14px;
-            color: #333;
-            background: rgba(255, 255, 255, 0.7);
-            padding: 2px 6px;
-            border-radius: 3px;
-        }
-        @media (max-width: 850px) {
-            #gameContainer {
-                flex-direction: column;
-            }
-            #joystick {
-                margin: 20px 0;
-            }
-        }
+        body { margin: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; font-family: Arial, sans-serif; overflow: hidden; background: #f0f0f0; min-height: 100vh; position: relative; }
+        #gameContainer { display: flex; flex-direction: row; align-items: center; justify-content: center; flex-wrap: wrap; max-width: 100%; position: relative; }
+        canvas { border: 1px solid black; background: #fff; width: 800px; height: 600px; max-width: 100%; max-height: 80vh; }
+        #controls { text-align: center; margin: 10px 0; }
+        #joystick { width: 150px; height: 150px; background: rgba(0, 0, 0, 0.2); border-radius: 50%; position: relative; margin: 0 20px 20px 0; display: none; touch-action: none; order: -1; }
+        #stick { width: 60px; height: 60px; background: rgba(0, 0, 0, 0.5); border-radius: 50%; position: absolute; top: 45px; left: 45px; }
+        #status { color: red; margin: 5px 0; }
+        #version { position: absolute; top: 10px; right: 10px; font-size: 14px; color: #333; background: rgba(255, 255, 255, 0.7); padding: 2px 6px; border-radius: 3px; }
+        @media (max-width: 850px) { #gameContainer { flex-direction: column; } #joystick { margin: 20px 0; } }
     </style>
 </head>
 <body>
@@ -100,9 +34,6 @@
         const ctx = canvas.getContext('2d');
         const statusEl = document.getElementById('status');
         const startButton = document.getElementById('startButton');
-        const SPAWN_POINTS = [
-            { x: 100, y: 100 }, { x: 700, y: 100 }, { x: 100, y: 500 }, { x: 700, y: 500 }
-        ];
         const GRAVITY = 0.5;
         const FLOOR_HEIGHT = 50;
         const GRID_SIZE = 40;
@@ -111,6 +42,10 @@
         canvas.width = Math.min(800, window.innerWidth * 0.9);
         canvas.height = Math.min(600, window.innerHeight * 0.7);
         const FLOOR_Y = canvas.height - FLOOR_HEIGHT;
+        const SPAWN_POINTS = [
+            { x: 100, y: 100 }, { x: canvas.width - 100, y: 100 },
+            { x: 100, y: FLOOR_Y - GRID_SIZE }, { x: canvas.width - 100, y: FLOOR_Y - GRID_SIZE }
+        ];
 
         const initPlayer = (id) => ({
             x: SPAWN_POINTS[id % SPAWN_POINTS.length].x,
@@ -127,9 +62,7 @@
         document.addEventListener('keydown', (e) => keys[e.key] = true);
         document.addEventListener('keyup', (e) => keys[e.key] = false);
         canvas.addEventListener('click', breakBlock);
-        document.addEventListener('keydown', (e) => {
-            if (e.code === 'Space') placeBlock(e);
-        });
+        document.addEventListener('keydown', (e) => { if (e.code === 'Space') placeBlock(e); });
         if ('ontouchstart' in window) {
             joystickEl.style.display = 'block';
             joystickEl.addEventListener('touchstart', startJoystick);
@@ -137,11 +70,7 @@
             joystickEl.addEventListener('touchend', endJoystick);
         }
 
-        console.log('Скрипт загружен');
-        startButton.addEventListener('click', () => {
-            console.log('Кнопка "Создать игру" нажата');
-            startGame();
-        });
+        startButton.addEventListener('click', startGame);
 
         function updateStatus(msg) {
             statusEl.textContent = msg;
@@ -174,17 +103,10 @@
 
         function startGame() {
             updateStatus('Создание игры...');
-            peer = new Peer({
-                host: '0.peerjs.com',
-                port: 443,
-                secure: true,
-                path: '/',
-                debug: 3
-            });
+            peer = new Peer({ host: '0.peerjs.com', port: 443, secure: true, path: '/', debug: 3 });
             peer.on('open', (id) => {
                 playerId = 0;
-                document.getElementById('gameLink').innerText = 
-                    `Поделитесь ссылкой: ${window.location.href.split('?')[0]}?peer=${id}`;
+                document.getElementById('gameLink').innerText = `Поделитесь ссылкой: ${window.location.href.split('?')[0]}?peer=${id}`;
                 gameState.players[0] = initPlayer(0);
                 updateStatus('Игра создана! Ждём игроков.');
                 startRendering();
@@ -200,10 +122,7 @@
                 });
                 conn.on('error', (err) => updateStatus(`Ошибка соединения: ${err.type || err}`));
             });
-            peer.on('error', (err) => {
-                updateStatus(`Ошибка PeerJS: ${err.type} - ${err.message || err}`);
-                console.error('Полная ошибка:', err);
-            });
+            peer.on('error', (err) => updateStatus(`Ошибка PeerJS: ${err.type} - ${err.message || err}`));
         }
 
         function joinGame() {
@@ -213,13 +132,7 @@
                 return;
             }
             updateStatus('Подключение к игре...');
-            peer = new Peer({
-                host: '0.peerjs.com',
-                port: 443,
-                secure: true,
-                path: '/',
-                debug: 3
-            });
+            peer = new Peer({ host: '0.peerjs.com', port: 443, secure: true, path: '/', debug: 3 });
             peer.on('open', () => {
                 conn = peer.connect(peerIdInput);
                 conn.on('data', handleData);
@@ -229,10 +142,7 @@
                 });
                 conn.on('error', (err) => updateStatus(`Ошибка соединения: ${err.type || err}`));
             });
-            peer.on('error', (err) => {
-                updateStatus(`Ошибка PeerJS: ${err.type} - ${err.message || err}`);
-                console.error('Полная ошибка:', err);
-            });
+            peer.on('error', (err) => updateStatus(`Ошибка PeerJS: ${err.type} - ${err.message || err}`));
         }
 
         function handleData(data) {
@@ -256,7 +166,7 @@
             const rect = canvas.getBoundingClientRect();
             const x = Math.floor((e.clientX - rect.left) / GRID_SIZE) * GRID_SIZE;
             const y = Math.floor((e.clientY - rect.top) / GRID_SIZE) * GRID_SIZE;
-            if (y + GRID_SIZE <= FLOOR_Y && y >= 0 && !gameState.blocks.some(b => b.x === x && b.y === y)) {
+            if (y >= 0 && y + GRID_SIZE <= FLOOR_Y && !gameState.blocks.some(b => b.x === x && b.y === y)) {
                 gameState.blocks.push({ x, y, color: gameState.players[playerId].color });
                 syncGameState();
             }
@@ -270,7 +180,6 @@
             const moveX = joystick.active ? joystick.x * speed : ((keys['d'] || 0) - (keys['a'] || 0)) * speed;
             let newX = player.x + moveX;
 
-            // Коллизия по X с другими игроками
             for (const [id, p] of Object.entries(gameState.players)) {
                 if (id !== playerId && 
                     newX < p.x + GRID_SIZE && newX + GRID_SIZE > p.x && 
@@ -278,50 +187,64 @@
                     newX = moveX > 0 ? p.x - GRID_SIZE : p.x + GRID_SIZE;
                 }
             }
+            for (const b of gameState.blocks) {
+                if (newX < b.x + GRID_SIZE && newX + GRID_SIZE > b.x && 
+                    player.y < b.y + GRID_SIZE && player.y + GRID_SIZE > b.y) {
+                    newX = moveX > 0 ? b.x - GRID_SIZE : b.x + GRID_SIZE;
+                }
+            }
             player.x = Math.max(0, Math.min(canvas.width - GRID_SIZE, newX));
 
-            // Прыжок и гравитация
             if ((keys['w'] || joystick.y < -0.5) && player.isGrounded) {
                 player.velocityY = -12;
                 player.isGrounded = false;
             }
 
-            player.velocityY += GRAVITY;
-            let newY = player.y + player.velocityY;
+            if (!player.isGrounded) {
+                player.velocityY += GRAVITY;
+            }
 
-            // Коллизия по Y с другими игроками и блоками
+            let newY = player.y + player.velocityY;
+            player.isGrounded = false;
+
             for (const [id, p] of Object.entries(gameState.players)) {
                 if (id !== playerId && 
                     player.x < p.x + GRID_SIZE && player.x + GRID_SIZE > p.x && 
                     newY < p.y + GRID_SIZE && newY + GRID_SIZE > p.y) {
-                    newY = player.velocityY > 0 ? p.y - GRID_SIZE : p.y + GRID_SIZE;
-                    player.velocityY = 0;
-                    player.isGrounded = newY <= p.y;
+                    if (player.velocityY > 0) {
+                        newY = p.y - GRID_SIZE;
+                        player.isGrounded = true;
+                        player.velocityY = 0;
+                    } else if (player.velocityY < 0) {
+                        newY = p.y + GRID_SIZE;
+                        player.velocityY = 0;
+                    }
                 }
             }
-
             for (const b of gameState.blocks) {
                 if (player.x < b.x + GRID_SIZE && player.x + GRID_SIZE > b.x && 
                     newY < b.y + GRID_SIZE && newY + GRID_SIZE > b.y) {
-                    newY = player.velocityY > 0 ? b.y - GRID_SIZE : b.y + GRID_SIZE;
-                    player.velocityY = 0;
-                    player.isGrounded = newY <= b.y;
+                    if (player.velocityY > 0) {
+                        newY = b.y - GRID_SIZE;
+                        player.isGrounded = true;
+                        player.velocityY = 0;
+                    } else if (player.velocityY < 0) {
+                        newY = b.y + GRID_SIZE;
+                        player.velocityY = 0;
+                    }
                 }
             }
 
-            // Ограничение по верхней и нижней границам
-            newY = Math.max(0, Math.min(FLOOR_Y - GRID_SIZE, newY));
-            player.y = newY;
-
-            // Проверка пола
-            if (player.y >= FLOOR_Y - GRID_SIZE) {
-                player.y = FLOOR_Y - GRID_SIZE;
+            if (newY <= 0) {
+                newY = 0;
+                player.velocityY = 0;
+            } else if (newY >= FLOOR_Y - GRID_SIZE) {
+                newY = FLOOR_Y - GRID_SIZE;
                 player.velocityY = 0;
                 player.isGrounded = true;
-            } else if (!player.isGrounded) {
-                player.isGrounded = false;
             }
 
+            player.y = newY;
             syncGameState();
         }
 
@@ -331,15 +254,12 @@
 
         function render() {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
-
             ctx.fillStyle = '#666';
             ctx.fillRect(0, FLOOR_Y, canvas.width, FLOOR_HEIGHT);
-
             for (const b of gameState.blocks) {
                 ctx.fillStyle = b.color;
                 ctx.fillRect(b.x, b.y, GRID_SIZE, GRID_SIZE);
             }
-
             for (const [id, p] of Object.entries(gameState.players)) {
                 ctx.fillStyle = p.color;
                 ctx.fillRect(p.x, p.y, GRID_SIZE, GRID_SIZE);
