@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>2D Shooter Game</title>
+    <title>2D Sandbox Game</title>
     <style>
         body {
             margin: 0;
@@ -92,7 +92,7 @@
         <div id="joystick"><div id="stick"></div></div>
         <canvas id="gameCanvas"></canvas>
     </div>
-    <div id="version">alpha-1.0.5</div>
+    <div id="version">alpha-1.0.4</div>
 
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
     <script>
@@ -100,23 +100,23 @@
         const ctx = canvas.getContext('2d');
         const statusEl = document.getElementById('status');
         const startButton = document.getElementById('startButton');
-        const SPAWN_POINTS = { 1: { x: 100, y: 100 }, 2: { x: 700, y: 100 } };
+        const SPAWN_POINTS = [
+            { x: 100, y: 100 }, { x: 700, y: 100 }, { x: 100, y: 500 }, { x: 700, y: 500 }
+        ];
         const GRAVITY = 0.5;
         const FLOOR_HEIGHT = 50;
-        const PLAYER_SIZE = 40;
-        const BULLET_SIZE = 10;
-        let peer, conn, playerId, gameState = { players: {}, bullets: [] };
+        const GRID_SIZE = 40; // Размер сетки и квадратов
+        const FLOOR_Y = canvas.height - FLOOR_HEIGHT;
+        let peer, conn, playerId, gameState = { players: {}, blocks: [] };
 
         canvas.width = Math.min(800, window.innerWidth * 0.9);
         canvas.height = Math.min(600, window.innerHeight * 0.7);
-        const FLOOR_Y = canvas.height - FLOOR_HEIGHT;
+        const FLOOR_Y_CORRECTED = canvas.height - FLOOR_HEIGHT;
 
         const initPlayer = (id) => ({
-            x: SPAWN_POINTS[id].x,
-            y: SPAWN_POINTS[id].y,
-            color: id === 1 ? 'blue' : 'red',
-            score: 0,
-            health: 100,
+            x: SPAWN_POINTS[id % SPAWN_POINTS.length].x,
+            y: SPAWN_POINTS[id % SPAWN_POINTS.length].y,
+            color: ['blue', 'red', 'green', 'purple'][id % 4],
             velocityY: 0,
             isGrounded: false
         });
@@ -127,7 +127,10 @@
 
         document.addEventListener('keydown', (e) => keys[e.key] = true);
         document.addEventListener('keyup', (e) => keys[e.key] = false);
-        canvas.addEventListener('click', shoot);
+        canvas.addEventListener('click', breakBlock);
+        document.addEventListener('keydown', (e) => {
+            if (e.code === 'Space') placeBlock(e);
+        });
         if ('ontouchstart' in window) {
             joystickEl.style.display = 'block';
             joystickEl.addEventListener('touchstart', startJoystick);
@@ -172,27 +175,34 @@
 
         function startGame() {
             updateStatus('Создание игры...');
-            console.log('Запуск создания игры');
-            peer = new Peer();
+            peer = new Peer({
+                host: 'peerjs-server.herokuapp.com',
+                secure: true,
+                port: 443,
+                path: '/'
+            });
             peer.on('open', (id) => {
-                playerId = 1;
+                playerId = 0; // Хост — игрок 0
                 document.getElementById('gameLink').innerText = 
                     `Поделитесь ссылкой: ${window.location.href.split('?')[0]}?peer=${id}`;
-                gameState.players[1] = initPlayer(1);
-                updateStatus('Игра создана! Ждём второго игрока.');
+                gameState.players[0] = initPlayer(0);
+                updateStatus('Игра создана! Ждём игроков.');
                 startRendering();
             });
             peer.on('connection', (connection) => {
-                conn = connection;
+                const newPlayerId = Object.keys(gameState.players).length;
+                conn = connection; // Храним только последнее соединение для упрощённой синхронизации
                 conn.on('data', handleData);
                 conn.on('open', () => {
-                    conn.send({ type: 'init', playerId: 2, state: gameState });
-                    gameState.players[2] = initPlayer(2);
-                    updateStatus('Второй игрок подключился!');
+                    conn.send({ type: 'init', playerId: newPlayerId, state: gameState });
+                    gameState.players[newPlayerId] = initPlayer(newPlayerId);
+                    updateStatus(`Игрок ${newPlayerId} подключился!`);
                 });
+                conn.on('error', (err) => updateStatus(`Ошибка соединения: ${err.type || err}`));
             });
             peer.on('error', (err) => {
-                updateStatus(`Ошибка создания игры: ${err.message || err}`);
+                updateStatus(`Ошибка PeerJS: ${err.type || err}`);
+                console.error('Детали ошибки PeerJS:', err);
             });
         }
 
@@ -203,18 +213,24 @@
                 return;
             }
             updateStatus('Подключение к игре...');
-            peer = new Peer();
+            peer = new Peer({
+                host: 'peerjs-server.herokuapp.com',
+                secure: true,
+                port: 443,
+                path: '/'
+            });
             peer.on('open', () => {
-                playerId = 2;
                 conn = peer.connect(peerIdInput);
                 conn.on('data', handleData);
                 conn.on('open', () => {
                     updateStatus('Подключено! Игра началась.');
                     startRendering();
                 });
+                conn.on('error', (err) => updateStatus(`Ошибка соединения: ${err.type || err}`));
             });
             peer.on('error', (err) => {
-                updateStatus(`Ошибка подключения: ${err.message || err}`);
+                updateStatus(`Ошибка PeerJS: ${err.type || err}`);
+                console.error('Детали ошибки PeerJS:', err);
             });
         }
 
@@ -227,92 +243,78 @@
             }
         }
 
-        function shoot(e) {
-            const player = gameState.players[playerId];
-            if (!player) return;
+        function breakBlock(e) {
             const rect = canvas.getBoundingClientRect();
-            const targetX = e.clientX - rect.left;
-            const targetY = e.clientY - rect.top;
-            const dx = targetX - (player.x + PLAYER_SIZE / 2);
-            const dy = targetY - (player.y + PLAYER_SIZE / 2);
-            const mag = Math.sqrt(dx * dx + dy * dy) || 1;
-            const offset = PLAYER_SIZE / 2 + 5;
-            gameState.bullets.push({
-                x: player.x + PLAYER_SIZE / 2 + (dx / mag) * offset,
-                y: player.y + PLAYER_SIZE / 2 + (dy / mag) * offset,
-                dx: (dx / mag) * 5,
-                dy: (dy / mag) * 5,
-                owner: playerId
-            });
+            const x = Math.floor((e.clientX - rect.left) / GRID_SIZE) * GRID_SIZE;
+            const y = Math.floor((e.clientY - rect.top) / GRID_SIZE) * GRID_SIZE;
+            gameState.blocks = gameState.blocks.filter(b => b.x !== x || b.y !== y);
             syncGameState();
+        }
+
+        function placeBlock(e) {
+            const rect = canvas.getBoundingClientRect();
+            const x = Math.floor((e.clientX - rect.left) / GRID_SIZE) * GRID_SIZE;
+            const y = Math.floor((e.clientY - rect.top) / GRID_SIZE) * GRID_SIZE;
+            if (y + GRID_SIZE <= FLOOR_Y_CORRECTED && !gameState.blocks.some(b => b.x === x && b.y === y)) {
+                gameState.blocks.push({ x, y, color: gameState.players[playerId].color });
+                syncGameState();
+            }
         }
 
         function updateGame() {
             const player = gameState.players[playerId];
             if (!player) return;
 
-            // Движение по горизонтали
             const speed = 5;
             const moveX = joystick.active ? joystick.x * speed : ((keys['d'] || 0) - (keys['a'] || 0)) * speed;
-            player.x = Math.max(0, Math.min(canvas.width - PLAYER_SIZE, player.x + moveX));
+            let newX = player.x + moveX;
 
-            // Прыжок
+            // Коллизия с другими игроками по X
+            for (const [id, p] of Object.entries(gameState.players)) {
+                if (id !== playerId && 
+                    newX < p.x + GRID_SIZE && newX + GRID_SIZE > p.x && 
+                    player.y < p.y + GRID_SIZE && player.y + GRID_SIZE > p.y) {
+                    newX = moveX > 0 ? p.x - GRID_SIZE : p.x + GRID_SIZE;
+                }
+            }
+            player.x = Math.max(0, Math.min(canvas.width - GRID_SIZE, newX));
+
             if ((keys['w'] || joystick.y < -0.5) && player.isGrounded) {
-                player.velocityY = -12; // Сила прыжка
+                player.velocityY = -12;
                 player.isGrounded = false;
             }
 
-            // Гравитация
             player.velocityY += GRAVITY;
-            player.y += player.velocityY;
+            let newY = player.y + player.velocityY;
 
-            // Коллизия с полом
-            if (player.y + PLAYER_SIZE >= FLOOR_Y) {
-                player.y = FLOOR_Y - PLAYER_SIZE;
+            // Коллизия с другими игроками по Y
+            for (const [id, p] of Object.entries(gameState.players)) {
+                if (id !== playerId && 
+                    player.x < p.x + GRID_SIZE && player.x + GRID_SIZE > p.x && 
+                    newY < p.y + GRID_SIZE && newY + GRID_SIZE > p.y) {
+                    newY = player.velocityY > 0 ? p.y - GRID_SIZE : p.y + GRID_SIZE;
+                    player.velocityY = 0;
+                    player.isGrounded = newY <= p.y;
+                }
+            }
+
+            // Коллизия с блоками
+            for (const b of gameState.blocks) {
+                if (player.x < b.x + GRID_SIZE && player.x + GRID_SIZE > b.x && 
+                    newY < b.y + GRID_SIZE && newY + GRID_SIZE > b.y) {
+                    newY = player.velocityY > 0 ? b.y - GRID_SIZE : b.y + GRID_SIZE;
+                    player.velocityY = 0;
+                    player.isGrounded = newY <= b.y;
+                }
+            }
+
+            player.y = newY;
+            if (player.y + GRID_SIZE >= FLOOR_Y_CORRECTED) {
+                player.y = FLOOR_Y_CORRECTED - GRID_SIZE;
                 player.velocityY = 0;
                 player.isGrounded = true;
-            } else {
+            } else if (!player.isGrounded) {
                 player.isGrounded = false;
-            }
-
-            // Обновление пуль
-            gameState.bullets = gameState.bullets.filter(b => {
-                b.x += b.dx;
-                b.y += b.dy;
-                // Коллизия пуль с полом
-                if (b.y + BULLET_SIZE >= FLOOR_Y) return false;
-                return b.x >= 0 && b.x <= canvas.width && b.y >= 0 && b.y <= canvas.height;
-            });
-
-            // Проверка попаданий
-            let someoneDied = false;
-            for (let i = gameState.bullets.length - 1; i >= 0; i--) {
-                const b = gameState.bullets[i];
-                for (const [id, p] of Object.entries(gameState.players)) {
-                    if (id !== b.owner && 
-                        b.x < p.x + PLAYER_SIZE && b.x + BULLET_SIZE > p.x && 
-                        b.y < p.y + PLAYER_SIZE && b.y + BULLET_SIZE > p.y) {
-                        p.health = Math.max(0, p.health - 10);
-                        if (p.health === 0) {
-                            someoneDied = true;
-                            p.score = Math.max(0, p.score - 1);
-                            gameState.players[b.owner].score++;
-                        }
-                        gameState.bullets.splice(i, 1);
-                        break;
-                    }
-                }
-            }
-
-            if (someoneDied) {
-                for (const id in gameState.players) {
-                    const p = gameState.players[id];
-                    p.x = SPAWN_POINTS[id].x;
-                    p.y = SPAWN_POINTS[id].y;
-                    p.health = 100;
-                    p.velocityY = 0;
-                    p.isGrounded = false;
-                }
             }
 
             syncGameState();
@@ -325,22 +327,17 @@
         function render() {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-            // Отрисовка пола
             ctx.fillStyle = '#666';
-            ctx.fillRect(0, FLOOR_Y, canvas.width, FLOOR_HEIGHT);
+            ctx.fillRect(0, FLOOR_Y_CORRECTED, canvas.width, FLOOR_HEIGHT);
 
-            // Отрисовка игроков (квадраты)
-            for (const [id, p] of Object.entries(gameState.players)) {
-                ctx.fillStyle = p.color;
-                ctx.fillRect(p.x, p.y, PLAYER_SIZE, PLAYER_SIZE);
-                ctx.fillStyle = 'black';
-                ctx.fillText(`Score: ${p.score} | HP: ${p.health}`, p.x - 40, p.y - 10);
+            for (const b of gameState.blocks) {
+                ctx.fillStyle = b.color;
+                ctx.fillRect(b.x, b.y, GRID_SIZE, GRID_SIZE);
             }
 
-            // Отрисовка пуль (квадраты)
-            ctx.fillStyle = 'black';
-            for (const b of gameState.bullets) {
-                ctx.fillRect(b.x, b.y, BULLET_SIZE, BULLET_SIZE);
+            for (const [id, p] of Object.entries(gameState.players)) {
+                ctx.fillStyle = p.color;
+                ctx.fillRect(p.x, p.y, GRID_SIZE, GRID_SIZE);
             }
         }
 
