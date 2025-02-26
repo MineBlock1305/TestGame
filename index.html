@@ -256,7 +256,7 @@
             const rect = canvas.getBoundingClientRect();
             const x = Math.floor((e.clientX - rect.left) / GRID_SIZE) * GRID_SIZE;
             const y = Math.floor((e.clientY - rect.top) / GRID_SIZE) * GRID_SIZE;
-            if (y + GRID_SIZE <= FLOOR_Y && !gameState.blocks.some(b => b.x === x && b.y === y)) {
+            if (y + GRID_SIZE <= FLOOR_Y && y >= 0 && !gameState.blocks.some(b => b.x === x && b.y === y)) {
                 gameState.blocks.push({ x, y, color: gameState.players[playerId].color });
                 syncGameState();
             }
@@ -270,6 +270,7 @@
             const moveX = joystick.active ? joystick.x * speed : ((keys['d'] || 0) - (keys['a'] || 0)) * speed;
             let newX = player.x + moveX;
 
+            // Коллизия по X с другими игроками
             for (const [id, p] of Object.entries(gameState.players)) {
                 if (id !== playerId && 
                     newX < p.x + GRID_SIZE && newX + GRID_SIZE > p.x && 
@@ -279,6 +280,7 @@
             }
             player.x = Math.max(0, Math.min(canvas.width - GRID_SIZE, newX));
 
+            // Прыжок и гравитация
             if ((keys['w'] || joystick.y < -0.5) && player.isGrounded) {
                 player.velocityY = -12;
                 player.isGrounded = false;
@@ -287,6 +289,7 @@
             player.velocityY += GRAVITY;
             let newY = player.y + player.velocityY;
 
+            // Коллизия по Y с другими игроками и блоками
             for (const [id, p] of Object.entries(gameState.players)) {
                 if (id !== playerId && 
                     player.x < p.x + GRID_SIZE && player.x + GRID_SIZE > p.x && 
@@ -306,8 +309,12 @@
                 }
             }
 
+            // Ограничение по верхней и нижней границам
+            newY = Math.max(0, Math.min(FLOOR_Y - GRID_SIZE, newY));
             player.y = newY;
-            if (player.y + GRID_SIZE >= FLOOR_Y) {
+
+            // Проверка пола
+            if (player.y >= FLOOR_Y - GRID_SIZE) {
                 player.y = FLOOR_Y - GRID_SIZE;
                 player.velocityY = 0;
                 player.isGrounded = true;
