@@ -175,11 +175,11 @@
         function startGame() {
             updateStatus('Создание игры...');
             peer = new Peer({
-                host: 'peerjs-server.herokuapp.com',
-                secure: true,
+                host: '0.peerjs.com',
                 port: 443,
+                secure: true,
                 path: '/',
-                debug: 3 // Максимальный уровень отладки
+                debug: 3
             });
             peer.on('open', (id) => {
                 playerId = 0;
@@ -214,9 +214,9 @@
             }
             updateStatus('Подключение к игре...');
             peer = new Peer({
-                host: 'peerjs-server.herokuapp.com',
-                secure: true,
+                host: '0.peerjs.com',
                 port: 443,
+                secure: true,
                 path: '/',
                 debug: 3
             });
